@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spring AI Ollama Demo</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .chat-container {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            height: 400px;
+            overflow-y: auto;
+            padding: 15px;
+            margin-bottom: 20px;
+            background-color: #fafafa;
+        }
+        .message {
+            margin-bottom: 15px;
+            padding: 10px;
+            border-radius: 8px;
+        }
+        .user-message {
+            background-color: #007bff;
+            color: white;
+            margin-left: 20%;
+        }
+        .assistant-message {
+            background-color: #e9ecef;
+            color: #333;
+            margin-right: 20%;
+        }
+        .input-container {
+            display: flex;
+            gap: 10px;
+        }
+        #messageInput {
+            flex: 1;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+        }
+        button {
+            padding: 12px 24px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        .status {
+            text-align: center;
+            margin-bottom: 20px;
+            padding: 10px;
+            border-radius: 6px;
+        }
+        .status.connected {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .status.disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 Spring AI Ollama Demo with Agent</h1>
+        
+        <div id="status" class="status disconnected">
+            正在检查连接状态...
+        </div>
+        
+        <div class="chat-container" id="chatContainer">
+            <div class="message assistant-message">
+                你好！我是基于Ollama的AI助手，现在集成了Agent功能，可以帮你：
+                <br>• 搜索本地文件（例如：搜索 pom.xml）
+                <br>• 智能下载文件（例如：下载 pom.xml 或 下载OllamaChatController，我会先搜索再确认）
+                <br>• 下载网络文件（例如：下载 https://example.com/file.txt）
+                <br>• 读取文件内容（例如：读取 README.md）
+                <br>• 查看系统信息（例如：系统信息）
+                <br>• 一般聊天对话
+                <br><br>💡 下载确认时，您可以输入：数字(1,2,3)、中文(第一个,第二个)、文件名(pom.xml)或部分文件名(pom)
+            </div>
+        </div>
+        
+        <div class="input-container">
+            <input type="text" id="messageInput" placeholder="输入你的消息..." onkeypress="handleKeyPress(event)">
+            <button onclick="sendMessage()" id="sendButton">发送</button>
+        </div>
+    </div>
+
+    <script>
+        let isConnected = false;
+
+        // 检查连接状态
+        async function checkConnection() {
+            try {
+                const response = await fetch('/api/chat/health');
+                if (response.ok) {
+                    isConnected = true;
+                    document.getElementById('status').className = 'status connected';
+                    document.getElementById('status').textContent = '✅ 已连接到Ollama服务';
+                } else {
+                    throw new Error('Health check failed');
+                }
+            } catch (error) {
+                isConnected = false;
+                document.getElementById('status').className = 'status disconnected';
+                document.getElementById('status').textContent = '❌ 无法连接到Ollama服务，请确保Ollama正在运行在 http://localhost:11434';
+            }
+        }
+
+        // 发送消息
+        async function sendMessage() {
+            if (!isConnected) {
+                alert('请先确保Ollama服务正在运行');
+                return;
+            }
+
+            const messageInput = document.getElementById('messageInput');
+            const message = messageInput.value.trim();
+            
+            if (!message) {
+                return;
+            }
+
+            // 添加用户消息到聊天界面
+            addMessage(message, 'user');
+            messageInput.value = '';
+
+            // 禁用发送按钮
+            const sendButton = document.getElementById('sendButton');
+            sendButton.disabled = true;
+            sendButton.textContent = '发送中...';
+
+            try {
+                const response = await fetch('/api/chat/message', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ message: message })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    let replyContent = data.reply;
+                    
+                    // 如果有额外数据，添加到回复中
+                    if (data.data && Object.keys(data.data).length > 0) {
+                        replyContent += '\n\n详细信息：';
+                        if (data.data.files && data.data.files.length > 0) {
+                            replyContent += '\n📁 找到 ' + data.data.files.length + ' 个文件';
+                        }
+                        if (data.data.contentMatches && data.data.contentMatches.length > 0) {
+                            replyContent += '\n📄 找到 ' + data.data.contentMatches.length + ' 个内容匹配';
+                        }
+                        if (data.data.downloadTask) {
+                            replyContent += '\n⬇️ 下载任务ID: ' + data.data.downloadTask.taskId;
+                        }
+                    }
+                    
+                    addMessage(replyContent, 'assistant');
+                } else {
+                    addMessage('抱歉，发生了错误，请稍后重试。', 'assistant');
+                }
+            } catch (error) {
+                addMessage('网络错误，请检查连接。', 'assistant');
+            } finally {
+                // 重新启用发送按钮
+                sendButton.disabled = false;
+                sendButton.textContent = '发送';
+            }
+        }
+
+        // 添加消息到聊天界面
+        function addMessage(content, role) {
+            const chatContainer = document.getElementById('chatContainer');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}-message`;
+            messageDiv.textContent = content;
+            chatContainer.appendChild(messageDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        // 处理回车键
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
+        }
+
+        // 页面加载时检查连接
+        window.onload = function() {
+            checkConnection();
+            // 每30秒检查一次连接状态
+            setInterval(checkConnection, 30000);
+        };
+    </script>
+</body>
+</html> 
