@@ -6,7 +6,7 @@ spring:
     name: spring-ai-demo
   ai:
     ollama:
-      base-url: http://106.52.6.69:11434
+      base-url: http://localhost:11434
       chat:
         model: deepseek-r1:14b
         options:
